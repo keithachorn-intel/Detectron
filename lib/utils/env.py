@@ -60,6 +60,7 @@ def get_caffe2_dir():
     assert os.path.exists(c2_path), \
         'Caffe2 not found at \'{}\''.format(c2_path)
     c2_dir = os.path.dirname(os.path.abspath(c2_path))
+    return '/usr/local/'
     return c2_dir
 
 
