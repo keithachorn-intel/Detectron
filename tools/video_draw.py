@@ -128,23 +128,6 @@ def parse_args():
         default=None,
         type=str
     )
-    parser.add_argument(
-        '--output-dir',
-        dest='output_dir',
-        help='directory for visualization pdfs (default: /tmp/infer_simple)',
-        default='/tmp/infer_simple',
-        type=str
-    )
-    parser.add_argument(
-        '--image-ext',
-        dest='image_ext',
-        help='image file name extension (default: jpg)',
-        default='jpg',
-        type=str
-    )
-    parser.add_argument(
-        'im_or_folder', help='image or folder of images', default=None
-    )
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
@@ -156,40 +139,48 @@ def main(args):
     merge_cfg_from_file(args.cfg)
     cfg.TEST.WEIGHTS = args.weights
     cfg.NUM_GPUS = 1
+    # No mask, no keypoints
+    cfg.MODEL.MASK_ON = False
+    cfg.MODEL.KEYPOINTS_ON = False
+    cfg.TEST.BBOX_AUG.ENABLED = False
+    # Soft NMS
+    # cfg.TEST.SOFT_NMS.ENABLED = True
     assert_and_infer_cfg()
     model = infer_engine.initialize_model_from_cfg()
     dummy_coco_dataset = dummy_datasets.get_coco_dataset()
 
-    if os.path.isdir(args.im_or_folder):
-        im_list = glob.iglob(args.im_or_folder + '/*.' + args.image_ext)
-    else:
-        im_list = [args.im_or_folder]
+    base_name = 'hummingbird'
 
-    for i, im_name in enumerate(im_list):
-        out_name = os.path.join(
-            args.output_dir, '{}'.format(os.path.basename(im_name) + '.pdf')
-        )
-        logger.info('Processing {} -> {}'.format(im_name, out_name))
-        im = cv2.imread(im_name)
+    vid_fname = '/home/daniel_d_kang/%s-cut.mp4' % base_name
+    cap = cv2.VideoCapture(vid_fname)
+
+    if base_name == 'hummingbird':
+        cap.set(1, 20500)
+
+    ret, frame = cap.read()
+
+    res = frame.shape[0:2][::-1]
+    # fourcc = cv2.VideoWriter_fourcc(map(ord, 'H264'))
+    # fourcc = cv2.VideoWriter_fourcc('H', '2', '6', '4')
+    fourcc = 875967048
+    vout = cv2.VideoWriter('/home/daniel_d_kang/%s-cut-vis.mp4' % base_name, fourcc, 15, res)
+
+    for i in range(1000):
+        ret, im = cap.read()
+        logger.info('Processing frame %d' % i)
         timers = defaultdict(Timer)
         t = time.time()
         with c2_utils.NamedCudaScope(0):
             cls_boxes, cls_segms, cls_keyps = infer_engine.im_detect_all(
-                model, im, None, timers=timers
-            )
+                model, im, None, timers=timers)
         logger.info('Inference time: {:.3f}s'.format(time.time() - t))
         for k, v in timers.items():
             logger.info(' | {}: {:.3f}s'.format(k, v.average_time))
-        if i == 0:
-            logger.info(
-                ' \ Note: inference on the first image will be slower than the '
-                'rest (caches and auto-tuning need to warm up)'
-            )
-
 
         im = vis_test(im, cls_boxes, segms=cls_segms, dataset=dummy_coco_dataset)
-        cv2.imwrite('test.png', im)
-        break
+        vout.write(im)
+    cap.release()
+    vout.release()
 
 
 if __name__ == '__main__':
