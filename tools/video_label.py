@@ -64,6 +64,8 @@ def get_rows(frame, boxes, segms=None, thresh=0.05, dataset=None):
             boxes, segms, None)
 
     rows = []
+    if boxes is None:
+        return rows
     for i in range(len(boxes)):
         score = boxes[i, -1]
         if score < thresh:
