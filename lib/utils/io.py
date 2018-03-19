@@ -20,13 +20,13 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
-import cPickle as pickle
+import pickle
 import hashlib
 import logging
 import os
 import re
 import sys
-import urllib2
+import urllib.request, urllib.error, urllib.parse
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ def cache_url(url_or_file, cache_dir):
         ('Detectron only automatically caches URLs in the Detectron S3 '
          'bucket: {}').format(_DETECTRON_S3_BASE_URL)
 
-    cache_file_path = url.replace(_DETECTRON_S3_BASE_URL, cache_dir)
+    cache_file_path = url.replace(_DETECTRON_S3_BASE_URL, cache_dir.decode('ascii'))
     if os.path.exists(cache_file_path):
         assert_cache_file_is_ok(url, cache_file_path)
         return cache_file_path
@@ -74,7 +74,7 @@ def assert_cache_file_is_ok(url, file_path):
     """Check that cache file has the correct hash."""
     # File is already in the cache, verify that the md5sum matches and
     # return local path
-    cache_file_md5sum = _get_file_md5sum(file_path)
+    cache_file_md5sum = _get_file_md5sum(file_path).encode('utf-8')
     ref_md5sum = _get_reference_md5sum(url)
     assert cache_file_md5sum == ref_md5sum, \
         ('Target URL {} appears to be downloaded to the local cache file '
@@ -111,8 +111,8 @@ def download_url(
     Credit:
     https://stackoverflow.com/questions/2028517/python-urllib2-progress-hook
     """
-    response = urllib2.urlopen(url)
-    total_size = response.info().getheader('Content-Length').strip()
+    response = urllib.request.urlopen(url)
+    total_size = response.info().get('Content-Length').strip()
     total_size = int(total_size)
     bytes_so_far = 0
 
@@ -132,7 +132,7 @@ def download_url(
 def _get_file_md5sum(file_name):
     """Compute the md5 hash of a file."""
     hash_obj = hashlib.md5()
-    with open(file_name, 'r') as f:
+    with open(file_name, 'rb') as f:
         hash_obj.update(f.read())
     return hash_obj.hexdigest()
 
@@ -140,5 +140,5 @@ def _get_file_md5sum(file_name):
 def _get_reference_md5sum(url):
     """By convention the md5 hash for url is stored in url + '.md5sum'."""
     url_md5sum = url + '.md5sum'
-    md5sum = urllib2.urlopen(url_md5sum).read().strip()
+    md5sum = urllib.request.urlopen(url_md5sum).read().strip()
     return md5sum

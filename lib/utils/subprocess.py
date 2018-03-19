@@ -27,7 +27,7 @@ import os
 import yaml
 import numpy as np
 import subprocess
-import cPickle as pickle
+import pickle as pickle
 from six.moves import shlex_quote
 
 from core.config import cfg
@@ -48,15 +48,15 @@ def process_in_parallel(tag, total_range_size, binary, output_dir):
         yaml.dump(cfg, stream=f)
     subprocess_env = os.environ.copy()
     processes = []
-    subinds = np.array_split(range(total_range_size), cfg.NUM_GPUS)
+    subinds = np.array_split(list(range(total_range_size)), cfg.NUM_GPUS)
     # Determine GPUs to use
     cuda_visible_devices = os.environ.get('CUDA_VISIBLE_DEVICES')
     if cuda_visible_devices:
-        gpu_inds = map(int, cuda_visible_devices.split(','))
+        gpu_inds = list(map(int, cuda_visible_devices.split(',')))
         assert -1 not in gpu_inds, \
             'Hiding GPU indices using the \'-1\' index is not supported'
     else:
-        gpu_inds = range(cfg.NUM_GPUS)
+        gpu_inds = list(range(cfg.NUM_GPUS))
     # Run the binary in cfg.NUM_GPUS subprocesses
     for i, gpu_ind in enumerate(gpu_inds):
         start = subinds[i][0]

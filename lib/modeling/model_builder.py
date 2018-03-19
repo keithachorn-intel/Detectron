@@ -129,6 +129,9 @@ def get_func(func_name):
     function in this module or the path to a function relative to the base
     'modeling' module.
     """
+    if type(func_name) == bytes:
+        func_name = func_name.decode('utf-8')
+
     if func_name == '':
         return None
     new_func_name = modeling.name_compat.get_new_name(func_name)

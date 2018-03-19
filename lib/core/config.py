@@ -873,7 +873,7 @@ __C.RESNETS.WIDTH_PER_GROUP = 64
 __C.RESNETS.STRIDE_1X1 = True
 
 # Residual transformation function
-__C.RESNETS.TRANS_FUNC = b'bottleneck_transformation'
+__C.RESNETS.TRANS_FUNC = 'bottleneck_transformation'
 
 # Apply dilation in stage "res5"
 __C.RESNETS.RES5_DILATION = 1
