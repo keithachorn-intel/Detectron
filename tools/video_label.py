@@ -33,6 +33,8 @@ import os
 import sys
 import time
 
+import swag
+
 import feather
 import pandas as pd
 import numpy as np
@@ -86,6 +88,7 @@ def parse_args():
     parser.add_argument('--start_frame', default=0, type=int)
     parser.add_argument('--nb_frames', default=10000000, type=int)
     parser.add_argument('--video_fname', required=True, type=str)
+    parser.add_argument('--index_fname', type=str)
     parser.add_argument('--feather_fname', required=True, type=str)
     if len(sys.argv) == 1:
         parser.print_help()
@@ -108,8 +111,12 @@ def main(args):
     model = infer_engine.initialize_model_from_cfg()
     dummy_coco_dataset = dummy_datasets.get_coco_dataset()
 
-    cap = cv2.VideoCapture(args.video_fname)
-    cap.set(1, args.start_frame)
+    USE_SWAG = True
+    if USE_SWAG:
+        cap = swag.VideoCapture(args.video_fname, args.index_fname)
+    else:
+        cap = cv2.VideoCapture(args.video_fname)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, args.start_frame)
 
     all_rows = []
     for i in range(args.nb_frames):
