@@ -136,8 +136,6 @@ def main(args):
 
         rows = get_rows(frame, cls_boxes, segms=cls_segms, dataset=dummy_coco_dataset)
         all_rows += rows
-    cap.release()
-
     df = pd.DataFrame(all_rows,
                       columns=['frame', 'cname', 'conf', 'xmin', 'ymin', 'xmax', 'ymax'])
     f32 = ['conf', 'xmin', 'ymin', 'xmax', 'ymax']
@@ -148,6 +146,8 @@ def main(args):
     df = df.sort_values(by=['frame', 'cname', 'conf'], ascending=[True, True, False])
     print(df)
     feather.write_dataframe(df, args.feather_fname)
+
+    cap.release()
 
 
 if __name__ == '__main__':
