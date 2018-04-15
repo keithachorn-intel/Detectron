@@ -59,6 +59,8 @@ def main(args):
             continue
         vid_fname = os.path.join(args.video_dir, vid_fname)
         feather_fname = os.path.join(args.feather_dir, str(vid_id) + '.feather')
+        if os.path.isfile(feather_fname):
+            continue
         print(vid_id, vid_fname, feather_fname)
         cap = cv2.VideoCapture(vid_fname)
 
