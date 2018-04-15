@@ -131,9 +131,9 @@ def label_video(model, dataset, cap, feather_fname,
 
     cap.release()
 
-def main(args):
-    merge_cfg_from_file(args.cfg)
-    cfg.TEST.WEIGHTS = args.weights
+def init_model(cfg_fname, wts_fname):
+    merge_cfg_from_file(cfg_fname)
+    cfg.TEST.WEIGHTS = wts_fname
     cfg.NUM_GPUS = 1
     # No mask, no keypoints
     cfg.MODEL.MASK_ON = False
@@ -143,6 +143,11 @@ def main(args):
     # cfg.TEST.SOFT_NMS.ENABLED = True
     assert_and_infer_cfg()
     model = infer_engine.initialize_model_from_cfg()
+    return model
+
+
+def main(args):
+    model = init_model(args.cfg, args.weights)
     dummy_coco_dataset = dummy_datasets.get_coco_dataset()
 
     USE_SWAG = True
