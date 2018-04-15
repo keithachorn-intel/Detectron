@@ -95,9 +95,43 @@ def parse_args():
         sys.exit(1)
     return parser.parse_args()
 
+def label_video(model, dataset, cap, feather_fname,
+                nb_frames=100000000, start_frame=0):
+    logger = logging.getLogger(__name__)
+
+    all_rows = []
+    for i in range(nb_frames):
+        frame = start_frame + i
+        ret, im = cap.read()
+        if not ret:
+            break
+        logger.info('Processing frame %d' % i)
+        timers = defaultdict(Timer)
+        t = time.time()
+        with c2_utils.NamedCudaScope(0):
+            cls_boxes, cls_segms, cls_keyps = infer_engine.im_detect_all(
+                model, im, None, timers=timers)
+        logger.info('Inference time: {:.3f}s'.format(time.time() - t))
+        for k, v in timers.items():
+            logger.info(' | {}: {:.3f}s'.format(k, v.average_time))
+
+        rows = get_rows(frame, cls_boxes, segms=cls_segms, dataset=dataset)
+        all_rows += rows
+
+    df = pd.DataFrame(all_rows,
+                      columns=['frame', 'cname', 'conf', 'xmin', 'ymin', 'xmax', 'ymax'])
+    f32 = ['conf', 'xmin', 'ymin', 'xmax', 'ymax']
+    for f in f32:
+        df[f] = df[f].astype('float32')
+    df['frame'] = df['frame'].astype('int32')
+    df['cname'] = df['cname'].astype('int8')
+    df = df.sort_values(by=['frame', 'cname', 'conf'], ascending=[True, True, False])
+    print(df)
+    feather.write_dataframe(df, feather_fname)
+
+    cap.release()
 
 def main(args):
-    logger = logging.getLogger(__name__)
     merge_cfg_from_file(args.cfg)
     cfg.TEST.WEIGHTS = args.weights
     cfg.NUM_GPUS = 1
@@ -118,36 +152,8 @@ def main(args):
         cap = cv2.VideoCapture(args.video_fname)
     cap.set(cv2.CAP_PROP_POS_FRAMES, args.start_frame)
 
-    all_rows = []
-    for i in range(args.nb_frames):
-        frame = i + args.start_frame
-        ret, im = cap.read()
-        if not ret:
-            break
-        logger.info('Processing frame %d' % i)
-        timers = defaultdict(Timer)
-        t = time.time()
-        with c2_utils.NamedCudaScope(0):
-            cls_boxes, cls_segms, cls_keyps = infer_engine.im_detect_all(
-                model, im, None, timers=timers)
-        logger.info('Inference time: {:.3f}s'.format(time.time() - t))
-        for k, v in timers.items():
-            logger.info(' | {}: {:.3f}s'.format(k, v.average_time))
-
-        rows = get_rows(frame, cls_boxes, segms=cls_segms, dataset=dummy_coco_dataset)
-        all_rows += rows
-    df = pd.DataFrame(all_rows,
-                      columns=['frame', 'cname', 'conf', 'xmin', 'ymin', 'xmax', 'ymax'])
-    f32 = ['conf', 'xmin', 'ymin', 'xmax', 'ymax']
-    for f in f32:
-        df[f] = df[f].astype('float32')
-    df['frame'] = df['frame'].astype('int32')
-    df['cname'] = df['cname'].astype('int8')
-    df = df.sort_values(by=['frame', 'cname', 'conf'], ascending=[True, True, False])
-    print(df)
-    feather.write_dataframe(df, args.feather_fname)
-
-    cap.release()
+    label_video(model, dummy_coco_dataset, cap, args.feather_fname,
+                args.nb_frames, args.start_frame)
 
 
 if __name__ == '__main__':
