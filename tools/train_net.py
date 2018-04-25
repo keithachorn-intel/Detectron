@@ -31,6 +31,7 @@ import pprint
 import re
 import sys
 import test_net
+import time
 
 from caffe2.python import memonger
 from caffe2.python import workspace
@@ -93,6 +94,7 @@ def parse_args():
 
 
 def main():
+    begin = time.time()
     # Initialize C2
     workspace.GlobalInit(
         ['caffe2', '--caffe2_log_level=0', '--caffe2_gpu_memory_tracking=1']
@@ -120,6 +122,9 @@ def main():
     # Test the trained model
     if not args.skip_test:
         test_model(checkpoints['final'], args.multi_gpu_testing, args.opts)
+
+    end = time.time()
+    print('Total time:', end - begin)
 
 
 def train_model():
