@@ -88,6 +88,18 @@ def parse_args():
         default=None,
         nargs=argparse.REMAINDER
     )
+    parser.add_argument(
+        '--box_min_ap',
+        help='Terminate after box_min_ap achieved',
+        default=0.377,
+        type=float
+    )
+    parser.add_argument(
+        '--mask_min_ap',
+        help='Terminate after box_min_ap achieved',
+        default=0.339,
+        type=float
+    )
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
@@ -157,9 +169,9 @@ def train_model(args):
                 output_dir, 'model_iter{}.pkl'.format(cur_iter)
             )
             nu.save_model_to_weights_file(checkpoints[cur_iter], model)
-            test_model(checkpoints[cur_iter], args.multi_gpu_testing, args.opts)
-            # model, start_iter, _, output_dir = create_model()
-            # setup_model_for_training(model, output_dir)
+            res = test_model(checkpoints[cur_iter], args.multi_gpu_testing, args.opts)
+            if res['box'] > args.box_min_ap and res['mask'] > args.mask_min_ap:
+                break
 
         if cur_iter == start_iter + training_stats.LOG_PERIOD:
             # Reset the iteration timer to remove outliers from the first few
@@ -290,7 +302,9 @@ def test_model(model_file, multi_gpu_testing, opts=None):
             ind_range=None, multi_gpu_testing=multi_gpu_testing)
     print(all_results['coco_2014_minival']['box']['AP'])
     print(all_results['coco_2014_minival']['mask']['AP'])
-    print(type(all_results))
+    res = {'box': all_results['coco_2014_minival']['box']['AP'],
+           'mask': all_results['coco_2014_minival']['mask']['AP']}
+    return res
 
 
 if __name__ == '__main__':
