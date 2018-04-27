@@ -41,6 +41,7 @@ from core.config import cfg
 from core.config import get_output_dir
 from core.config import merge_cfg_from_file
 from core.config import merge_cfg_from_list
+from core.test_engine import run_inference
 from datasets.roidb import combined_roidb_for_training
 from modeling import model_builder
 from utils import lr_policy
@@ -118,7 +119,7 @@ def main():
     # non-deterministic cudnn functions).
     np.random.seed(cfg.RNG_SEED)
     # Execute the training run
-    checkpoints = train_model()
+    checkpoints = train_model(args)
     # Test the trained model
     if not args.skip_test:
         test_model(checkpoints['final'], args.multi_gpu_testing, args.opts)
@@ -127,15 +128,16 @@ def main():
     print('Total time:', end - begin)
 
 
-def train_model():
+def train_model(args):
     """Model training loop."""
     logger = logging.getLogger(__name__)
+    roidb = combined_roidb_for_training(cfg.TRAIN.DATASETS, cfg.TRAIN.PROPOSAL_FILES)
     model, start_iter, checkpoints, output_dir = create_model()
     if 'final' in checkpoints:
         # The final model was found in the output directory, so nothing to do
         return checkpoints
 
-    setup_model_for_training(model, output_dir)
+    setup_model_for_training(model, output_dir, roidb)
     training_stats = TrainingStats(model)
     CHECKPOINT_PERIOD = int(cfg.TRAIN.SNAPSHOT_ITERS / cfg.NUM_GPUS)
 
@@ -149,11 +151,15 @@ def train_model():
         training_stats.UpdateIterStats()
         training_stats.LogIterStats(cur_iter, lr)
 
-        if (cur_iter + 1) % CHECKPOINT_PERIOD == 0 and cur_iter > start_iter:
+        # COCO has 118k images
+        if (cur_iter + 1) % 59000 == 0 and cur_iter > start_iter:
             checkpoints[cur_iter] = os.path.join(
                 output_dir, 'model_iter{}.pkl'.format(cur_iter)
             )
             nu.save_model_to_weights_file(checkpoints[cur_iter], model)
+            test_model(checkpoints[cur_iter], args.multi_gpu_testing, args.opts)
+            # model, start_iter, _, output_dir = create_model()
+            # setup_model_for_training(model, output_dir)
 
         if cur_iter == start_iter + training_stats.LOG_PERIOD:
             # Reset the iteration timer to remove outliers from the first few
@@ -230,10 +236,10 @@ def optimize_memory(model):
         )
 
 
-def setup_model_for_training(model, output_dir):
+def setup_model_for_training(model, output_dir, roidb=None):
     """Loaded saved weights and create the network in the C2 workspace."""
     logger = logging.getLogger(__name__)
-    add_model_training_inputs(model)
+    add_model_training_inputs(model, roidb)
 
     if cfg.TRAIN.WEIGHTS:
         # Override random weight initialization with weights from a saved model
@@ -252,13 +258,14 @@ def setup_model_for_training(model, output_dir):
     return output_dir
 
 
-def add_model_training_inputs(model):
+def add_model_training_inputs(model, roidb):
     """Load the training dataset and attach the training inputs to the model."""
     logger = logging.getLogger(__name__)
     logger.info('Loading dataset: {}'.format(cfg.TRAIN.DATASETS))
-    roidb = combined_roidb_for_training(
-        cfg.TRAIN.DATASETS, cfg.TRAIN.PROPOSAL_FILES
-    )
+    if roidb is None:
+        roidb = combined_roidb_for_training(
+            cfg.TRAIN.DATASETS, cfg.TRAIN.PROPOSAL_FILES
+        )
     logger.info('{:d} roidb entries'.format(len(roidb)))
     model_builder.add_training_inputs(model, roidb=roidb)
 
@@ -277,9 +284,13 @@ def test_model(model_file, multi_gpu_testing, opts=None):
     # All arguments to inference functions are passed via cfg
     cfg.TEST.WEIGHTS = model_file
     # Clear memory before inference
-    workspace.ResetWorkspace()
+    # workspace.ResetWorkspace()
     # Run inference
-    test_net.main(multi_gpu_testing=multi_gpu_testing)
+    all_results = run_inference(
+            ind_range=None, multi_gpu_testing=multi_gpu_testing)
+    print(all_results['coco_2014_minival']['box']['AP'])
+    print(all_results['coco_2014_minival']['mask']['AP'])
+    print(type(all_results))
 
 
 if __name__ == '__main__':
