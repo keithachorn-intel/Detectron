@@ -100,6 +100,12 @@ def parse_args():
         default=0.339,
         type=float
     )
+    parser.add_argument(
+        '--seed',
+        help='Random seed. Will override config seed',
+        default=3,
+        type=int
+    )
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
@@ -129,7 +135,7 @@ def main():
     # deterministic in general. There are sources of non-determinism that cannot
     # be removed with a reasonble execution-speed tradeoff (such as certain
     # non-deterministic cudnn functions).
-    np.random.seed(cfg.RNG_SEED)
+    np.random.seed(args.seed)
     # Execute the training run
     checkpoints = train_model(args)
     # Test the trained model
