@@ -33,6 +33,8 @@ import sys
 import test_net
 import time
 
+from mlperf_compliance import mlperf_log
+
 from caffe2.python import memonger
 from caffe2.python import workspace
 
@@ -113,6 +115,7 @@ def parse_args():
 
 
 def main():
+    mlperf_log.maskrcnn_print(key=mlperf_log.RUN_START)
     begin = time.time()
     # Initialize C2
     workspace.GlobalInit(
@@ -131,16 +134,36 @@ def main():
     assert_and_infer_cfg()
     logger.info('Training with config:')
     logger.info(pprint.pformat(cfg))
+
+    mlperf_log.maskrcnn_print(key=mlperf_log.INPUT_ORDER)
+    mlperf_log.maskrcnn_print(key=mlperf_log.INPUT_BATCH_SIZE, value=cfg['TRAIN']['IMS_PER_BATCH'])
+
+    mlperf_log.maskrcnn_print(key=mlperf_log.BACKBONE, value='resnet50')
+
+    mlperf_log.maskrcnn_print(key=mlperf_log.NMS_THRESHOLD, value=cfg['TEST']['RPN_NMS_THRESH'])
+    mlperf_log.maskrcnn_print(key=mlperf_log.NMS_MAX_DETECTIONS,
+                              value=cfg['TEST']['RPN_POST_NMS_TOP_N'])
+
+    mlperf_log.maskrcnn_print(key=mlperf_log.OPT_NAME, value='SGD')
+    mlperf_log.maskrcnn_print(key=mlperf_log.OPT_LR, value=cfg['SOLVER']['BASE_LR'])
+    mlperf_log.maskrcnn_print(key=mlperf_log.OPT_MOMENTUM, value=cfg['SOLVER']['MOMENTUM'])
+    mlperf_log.maskrcnn_print(key=mlperf_log.OPT_WEIGHT_DECAY, value=cfg['SOLVER']['WEIGHT_DECAY'])
+
     # Note that while we set the numpy random seed network training will not be
     # deterministic in general. There are sources of non-determinism that cannot
     # be removed with a reasonble execution-speed tradeoff (such as certain
     # non-deterministic cudnn functions).
     np.random.seed(args.seed)
     # Execute the training run
-    checkpoints = train_model(args)
+    res = train_model(args)
     # Test the trained model
-    if not args.skip_test:
-        test_model(checkpoints['final'], args.multi_gpu_testing, args.opts)
+    # if not args.skip_test:
+    #     res = test_model(checkpoints['final'], args.multi_gpu_testing, args.opts)
+
+    success = res['box'] > args.box_min_ap and res['mask'] > args.mask_min_ap
+    mlperf_log.maskrcnn_print(key=mlperf_log.RUN_STOP,
+                              value={"success": success})
+    mlperf_log.maskrcnn_print(key=mlperf_log.RUN_FINAL)
 
     end = time.time()
     print('Total time:', end - begin)
@@ -159,6 +182,9 @@ def train_model(args):
     training_stats = TrainingStats(model)
     CHECKPOINT_PERIOD = int(cfg.TRAIN.SNAPSHOT_ITERS / cfg.NUM_GPUS)
 
+    mlperf_log.maskrcnn_print(key=mlperf_log.TRAIN_LOOP)
+    epoch = 0
+    mlperf_log.ssd_print(key=mlperf_log.TRAIN_EPOCH, value=epoch)
     for cur_iter in range(start_iter, cfg.SOLVER.MAX_ITER):
         training_stats.IterTic()
         lr = model.UpdateWorkspaceLr(cur_iter, lr_policy.get_lr_at_iter(cur_iter))
@@ -175,9 +201,11 @@ def train_model(args):
                 output_dir, 'model_iter{}.pkl'.format(cur_iter)
             )
             nu.save_model_to_weights_file(checkpoints[cur_iter], model)
-            res = test_model(checkpoints[cur_iter], args.multi_gpu_testing, args.opts)
+            res = test_model(checkpoints[cur_iter], args.multi_gpu_testing, epoch, args.opts)
             if res['box'] > args.box_min_ap and res['mask'] > args.mask_min_ap:
                 break
+            epoch += 1
+            mlperf_log.ssd_print(key=mlperf_log.TRAIN_EPOCH, value=epoch)
 
         if cur_iter == start_iter + training_stats.LOG_PERIOD:
             # Reset the iteration timer to remove outliers from the first few
@@ -194,7 +222,8 @@ def train_model(args):
     nu.save_model_to_weights_file(checkpoints['final'], model)
     # Shutdown data loading threads
     model.roi_data_loader.shutdown()
-    return checkpoints
+    return res
+    # return checkpoints
 
 
 def create_model():
@@ -297,8 +326,9 @@ def dump_proto_files(model, output_dir):
         fid.write(str(model.param_init_net.Proto()))
 
 
-def test_model(model_file, multi_gpu_testing, opts=None):
+def test_model(model_file, multi_gpu_testing, epoch=0, opts=None):
     """Test a model."""
+    mlperf_log.maskrcnn_print(key=mlperf_log.EVAL_START, value=epoch)
     # All arguments to inference functions are passed via cfg
     cfg.TEST.WEIGHTS = model_file
     # Clear memory before inference
@@ -310,6 +340,11 @@ def test_model(model_file, multi_gpu_testing, opts=None):
     print(all_results['coco_2014_minival']['mask']['AP'])
     res = {'box': all_results['coco_2014_minival']['box']['AP'],
            'mask': all_results['coco_2014_minival']['mask']['AP']}
+
+    tmp = res
+    res['epoch'] = epoch
+    mlperf_log.maskrcnn_print(key=mlperf_log.EVAL_ACCURACY, value=tmp)
+    mlperf_log.maskrcnn_print(key=mlperf_log.EVAL_STOP, value=epoch)
     return res
 
 
